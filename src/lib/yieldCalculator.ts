@@ -18,6 +18,25 @@ export interface PredictionResult {
   optimization_suggestions: string[];
 }
 
+export interface CropRecommendation {
+  crop_type: FieldData['crop_type'];
+  predicted_yield: number;
+  suitability_score: number;
+  reasons: string[];
+}
+
+export interface FieldConditions {
+  season: string;
+  area: number;
+  soil_pH: number;
+  nitrogen: number;
+  phosphorus: number;
+  potassium: number;
+  rainfall: number;
+  temperature: number;
+  humidity: number;
+}
+
 export interface ValidationError {
   error: string;
 }
@@ -169,4 +188,111 @@ export function calculateYield(data: FieldData): PredictionResult {
     accuracy_score: accuracyScore,
     optimization_suggestions: suggestions.slice(0, 5),
   };
+}
+
+// Crop-specific optimal conditions
+const CROP_CONDITIONS: Record<string, { 
+  optimalPH: [number, number]; 
+  optimalTemp: [number, number]; 
+  optimalRainfall: [number, number];
+  optimalHumidity: [number, number];
+  nitrogenNeed: 'low' | 'medium' | 'high';
+}> = {
+  wheat: { optimalPH: [6.0, 7.5], optimalTemp: [15, 25], optimalRainfall: [250, 500], optimalHumidity: [40, 70], nitrogenNeed: 'medium' },
+  corn: { optimalPH: [5.8, 7.0], optimalTemp: [20, 30], optimalRainfall: [400, 600], optimalHumidity: [50, 80], nitrogenNeed: 'high' },
+  rice: { optimalPH: [5.5, 6.5], optimalTemp: [22, 32], optimalRainfall: [500, 800], optimalHumidity: [70, 90], nitrogenNeed: 'high' },
+  soybeans: { optimalPH: [6.0, 7.0], optimalTemp: [20, 30], optimalRainfall: [300, 500], optimalHumidity: [50, 75], nitrogenNeed: 'low' },
+  cotton: { optimalPH: [5.8, 8.0], optimalTemp: [20, 35], optimalRainfall: [400, 700], optimalHumidity: [40, 65], nitrogenNeed: 'medium' },
+  barley: { optimalPH: [6.0, 8.0], optimalTemp: [12, 22], optimalRainfall: [200, 400], optimalHumidity: [40, 65], nitrogenNeed: 'medium' },
+  sunflower: { optimalPH: [6.0, 7.5], optimalTemp: [18, 28], optimalRainfall: [300, 500], optimalHumidity: [40, 70], nitrogenNeed: 'low' },
+};
+
+export function validateFieldConditions(data: Partial<FieldConditions>): ValidationError | null {
+  const requiredFields: (keyof FieldConditions)[] = [
+    'season', 'area', 'soil_pH', 'nitrogen', 
+    'phosphorus', 'potassium', 'rainfall', 'temperature', 'humidity'
+  ];
+
+  for (const field of requiredFields) {
+    if (data[field] === undefined || data[field] === null || data[field] === '') {
+      return { error: `Missing field: ${field}` };
+    }
+  }
+
+  return null;
+}
+
+export function recommendCrops(conditions: FieldConditions): CropRecommendation[] {
+  const cropTypes: FieldData['crop_type'][] = ['wheat', 'corn', 'rice', 'soybeans', 'cotton', 'barley', 'sunflower'];
+  
+  const recommendations: CropRecommendation[] = cropTypes.map(cropType => {
+    const cropConditions = CROP_CONDITIONS[cropType];
+    let suitabilityScore = 1.0;
+    const reasons: string[] = [];
+
+    // pH suitability
+    if (conditions.soil_pH >= cropConditions.optimalPH[0] && conditions.soil_pH <= cropConditions.optimalPH[1]) {
+      suitabilityScore += 0.15;
+      reasons.push(`Soil pH ${conditions.soil_pH} is ideal (optimal: ${cropConditions.optimalPH[0]}-${cropConditions.optimalPH[1]})`);
+    } else {
+      suitabilityScore -= 0.15;
+    }
+
+    // Temperature suitability
+    if (conditions.temperature >= cropConditions.optimalTemp[0] && conditions.temperature <= cropConditions.optimalTemp[1]) {
+      suitabilityScore += 0.2;
+      reasons.push(`Temperature ${conditions.temperature}°C is excellent for growth`);
+    } else {
+      suitabilityScore -= 0.2;
+    }
+
+    // Rainfall suitability
+    if (conditions.rainfall >= cropConditions.optimalRainfall[0] && conditions.rainfall <= cropConditions.optimalRainfall[1]) {
+      suitabilityScore += 0.15;
+      reasons.push(`Rainfall ${conditions.rainfall}mm matches water requirements`);
+    } else if (conditions.rainfall < cropConditions.optimalRainfall[0]) {
+      suitabilityScore -= 0.1;
+    } else {
+      suitabilityScore -= 0.05;
+    }
+
+    // Humidity suitability
+    if (conditions.humidity >= cropConditions.optimalHumidity[0] && conditions.humidity <= cropConditions.optimalHumidity[1]) {
+      suitabilityScore += 0.1;
+      reasons.push(`Humidity level supports healthy crop development`);
+    } else {
+      suitabilityScore -= 0.1;
+    }
+
+    // Nitrogen match
+    const nitrogenThresholds = { low: 40, medium: 60, high: 80 };
+    const requiredN = nitrogenThresholds[cropConditions.nitrogenNeed];
+    if (conditions.nitrogen >= requiredN * 0.8) {
+      suitabilityScore += 0.1;
+      reasons.push(`Nitrogen levels adequate for ${cropConditions.nitrogenNeed} requirement crop`);
+    }
+
+    // Phosphorus and Potassium
+    if (conditions.phosphorus >= 30 && conditions.potassium >= 30) {
+      suitabilityScore += 0.1;
+      reasons.push('Good phosphorus and potassium levels for root and plant health');
+    }
+
+    // Normalize score
+    suitabilityScore = Math.max(0.1, Math.min(1.0, suitabilityScore));
+
+    // Calculate predicted yield
+    const fieldData: FieldData = { ...conditions, crop_type: cropType };
+    const prediction = calculateYield(fieldData);
+
+    return {
+      crop_type: cropType,
+      predicted_yield: prediction.predicted_yield,
+      suitability_score: Math.round(suitabilityScore * 100) / 100,
+      reasons: reasons.length > 0 ? reasons : ['General conditions are suitable for this crop'],
+    };
+  });
+
+  // Sort by suitability score descending
+  return recommendations.sort((a, b) => b.suitability_score - a.suitability_score);
 }
