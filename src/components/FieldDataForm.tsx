@@ -69,6 +69,10 @@ export function FieldDataForm({ onSubmit, isLoading }: FieldDataFormProps) {
                   <SelectItem value="wheat">Wheat</SelectItem>
                   <SelectItem value="corn">Corn</SelectItem>
                   <SelectItem value="rice">Rice</SelectItem>
+                  <SelectItem value="soybeans">Soybeans</SelectItem>
+                  <SelectItem value="cotton">Cotton</SelectItem>
+                  <SelectItem value="barley">Barley</SelectItem>
+                  <SelectItem value="sunflower">Sunflower</SelectItem>
                 </SelectContent>
               </Select>
             </div>

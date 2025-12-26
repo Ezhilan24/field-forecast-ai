@@ -1,5 +1,5 @@
 export interface FieldData {
-  crop_type: 'wheat' | 'corn' | 'rice';
+  crop_type: 'wheat' | 'corn' | 'rice' | 'soybeans' | 'cotton' | 'barley' | 'sunflower';
   season: string;
   area: number;
   soil_pH: number;
@@ -26,6 +26,10 @@ const BASE_YIELDS: Record<string, number> = {
   wheat: 2000,
   corn: 2500,
   rice: 1800,
+  soybeans: 1200,
+  cotton: 800,
+  barley: 1900,
+  sunflower: 1100,
 };
 
 export function validateFieldData(data: Partial<FieldData>): ValidationError | null {
@@ -129,6 +133,22 @@ export function calculateYield(data: FieldData): PredictionResult {
 
   if (data.crop_type === 'wheat' && data.rainfall < 250) {
     suggestions.push("Consider switching to millet or sorghum for better drought resilience.");
+  }
+
+  if (data.crop_type === 'soybeans' && data.soil_pH < 6.0) {
+    suggestions.push("Soybeans prefer pH 6.0-7.0. Apply lime to raise soil pH for better nodulation.");
+  }
+
+  if (data.crop_type === 'cotton' && data.temperature < 15) {
+    suggestions.push("Cotton requires warm temperatures (20-30°C). Consider delayed planting or row covers.");
+  }
+
+  if (data.crop_type === 'barley' && data.nitrogen > 80) {
+    suggestions.push("Excessive nitrogen can cause lodging in barley. Reduce to 60-80 kg/ha.");
+  }
+
+  if (data.crop_type === 'sunflower' && data.humidity > 80) {
+    suggestions.push("High humidity increases disease risk in sunflowers. Ensure good field drainage.");
   }
 
   if (data.phosphorus < 25) {
